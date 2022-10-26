@@ -102,11 +102,9 @@ int format_response(const char * path, ap_info_list_t *ap_list,char * response)
 				        ,ap_list->ap[i].ssid,ap_list->ap[i].channel,tmp_ap_list.ap[i].channel);
 				ap_list->ap[i].channel=tmp_ap_list.ap[i].channel;
 			}
-            fprintf(stderr,"the same ssid\n");
 		}
 		else 
 		{
-            fprintf(stderr,"not the same\n");
 			sprintf(response+strlen(response),"%s's is removed from the list\n",ap_list->ap[i].ssid);
             sprintf(response+strlen(response),"%s is added to the list with SNR %d and channel %d\n",
                     tmp_ap_list.ap[i].ssid,tmp_ap_list.ap[i].snr,tmp_ap_list.ap[i].channel);
