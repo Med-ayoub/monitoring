@@ -8,6 +8,8 @@
 #include <sys/socket.h> 
 #include <netinet/in.h>
 #include <sys/types.h>
+#include <sys/inotify.h>
+#include <limits.h>
 #include <pthread.h>
 #include <poll.h>
 #include <semaphore.h>
@@ -16,7 +18,8 @@
 
 #define PORT 8888
 #define AP_PATH "/tmp/access_points"
-
+#define EVENT_SIZE  (sizeof(struct inotify_event))
+#define BUF_LEN     (1024 * (EVENT_SIZE + 16))
 
 
 
@@ -26,6 +29,7 @@ struct array_data {
 	void *array_first_item;
 	int *length;
 	ap_info_list_t *ap_list;
+	int *fd_inotify;
 };
 
 static volatile int sockfd = 0;
@@ -35,13 +39,27 @@ void *send_message(void * arg) {
 
 	struct array_data *client_array = (struct array_data  *)arg;
 	int *fds = client_array->array_first_item;
-	while(1){
-		char message[1024]= "";
-		format_response(AP_PATH,client_array->ap_list,message);
-		for(int i = 0 ; i < *(client_array->length) ; i++){
-			write(fds[i],message, sizeof(message));
-		}
-		sleep(5);
+    inotify_add_watch(*client_array->fd_inotify, "/tmp",IN_MODIFY);
+
+	while(1) {
+        int length, i = 0;
+        char buffer[BUF_LEN];
+        length = read(*client_array->fd_inotify, buffer, BUF_LEN);
+        //notify message when acces_points file is changed
+        while (i < length) {
+            struct inotify_event *event =(struct inotify_event *) &buffer[i];
+            if (event->len && (event->mask & IN_MODIFY)) {
+				if(strcmp("access_points",event->name)==0) {
+					char message[1024]="";
+					format_response(AP_PATH,client_array->ap_list,message);
+					//write to all connected clients
+					for(int i = 0 ; i < *(client_array->length) ; i++) {
+						write(fds[i],message, sizeof(message));
+					}
+				}
+            }
+            i += EVENT_SIZE + event->len;
+        }
 	}
 }
 
@@ -60,8 +78,13 @@ int main() {
 
 	format_ap_list(AP_PATH,&access_points);
 
+	//init intoify
+	int fd =inotify_init();
+
+
 	data_client.array_first_item = fds;
 	data_client.length = &nfds;
+	data_client.fd_inotify=&fd;
 	data_client.ap_list = &access_points;
 	
 	
@@ -118,7 +141,7 @@ int main() {
 	}
 	pthread_join(check_json_thread, NULL);
     close(server_fd);
-
+    close(fd);
 	return EXIT_SUCCESS;
 }
 
